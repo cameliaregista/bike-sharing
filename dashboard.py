@@ -1,199 +1,143 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
 
-# =====================================================
-# Page Configuration
-# =====================================================
-
+# 1. Konfigurasi Halaman
 st.set_page_config(
     page_title="Bike Sharing Dashboard",
     page_icon="🚲",
     layout="wide"
 )
 
-sns.set_style("whitegrid")
+# 2. Load Data
+@st.cache_data
+def load_data():
+    df = pd.read_csv("data/main_data.csv")
+    df['dteday'] = pd.to_datetime(df['dteday'])
+    return df
 
-# =====================================================
-# Load Data
-# =====================================================
+df = load_data()
 
-day_df = pd.read_csv("data/day.csv")
-hour_df = pd.read_csv("data/hour.csv")
+# 3. Sidebar - Filter Dashboard
+st.sidebar.title("Filter Dashboard")
 
-day_df["dteday"] = pd.to_datetime(day_df["dteday"])
-hour_df["dteday"] = pd.to_datetime(hour_df["dteday"])
+season_options = ["All"] + df['season'].unique().tolist()
+weather_options = ["All"] + df['weathersit'].unique().tolist()
 
-# =====================================================
-# Mapping Label
-# =====================================================
-
-season_labels = {
-    1: "Spring",
-    2: "Summer",
-    3: "Fall",
-    4: "Winter"
-}
-
-weather_labels = {
-    1: "Clear",
-    2: "Mist",
-    3: "Light Snow/Rain",
-    4: "Heavy Rain"
-}
-
-workingday_labels = {
-    0: "Holiday/Weekend",
-    1: "Working Day"
-}
-
-day_df["season"] = day_df["season"].map(season_labels)
-day_df["weathersit"] = day_df["weathersit"].map(weather_labels)
-
-hour_df["workingday"] = hour_df["workingday"].map(workingday_labels)
-
-# =====================================================
-# Sidebar
-# =====================================================
-
-st.sidebar.header("Filter Dashboard")
-
-selected_season = st.sidebar.multiselect(
+selected_season = st.sidebar.selectbox(
     "Select Season",
-    options=day_df["season"].unique(),
-    default=day_df["season"].unique()
+    options=season_options,
+    index=0
 )
 
-filtered_day = day_df[
-    day_df["season"].isin(selected_season)
-]
+selected_weather = st.sidebar.selectbox(
+    "Select Weather",
+    options=weather_options,
+    index=0
+)
 
-# =====================================================
-# Dashboard Title
-# =====================================================
+# 4. Filter DataFrame
+filtered_df = df.copy()
 
+if selected_season != "All":
+    filtered_df = filtered_df[filtered_df['season'] == selected_season]
+
+if selected_weather != "All":
+    filtered_df = filtered_df[filtered_df['weathersit'] == selected_weather]
+
+# 5. Header Dashboard
 st.title("🚲 Bike Sharing Dashboard")
+st.markdown("Dashboard ini menyajikan hasil analisis Bike Sharing Dataset tahun **2011–2012**.")
 
-st.markdown("""
-Dashboard ini menyajikan hasil analisis Bike Sharing Dataset tahun **2011–2012**.
-""")
-
-# =====================================================
-# KPI
-# =====================================================
-
+# 6. Metrics KPI
 col1, col2, col3 = st.columns(3)
 
-col1.metric(
-    "Total Rentals",
-    f"{filtered_day['cnt'].sum():,.0f}"
-)
+total_rentals = filtered_df['cnt'].sum()
+avg_rentals = filtered_df['cnt'].mean() if not filtered_df.empty else 0
+max_rentals = filtered_df['cnt'].max() if not filtered_df.empty else 0
 
-col2.metric(
-    "Average Rentals",
-    f"{filtered_day['cnt'].mean():.0f}"
-)
+col1.metric("Total Rentals", f"{total_rentals:,.0f}")
+col2.metric("Average Rentals", f"{avg_rentals:,.1f}")
+col3.metric("Maximum Rentals", f"{max_rentals:,.0f}")
 
-col3.metric(
-    "Maximum Rentals",
-    f"{filtered_day['cnt'].max():,.0f}"
-)
+st.divider()
 
-st.markdown("---")
+# 7. Menampilkan Visualisasi Utama (Secara Vertikal)
+if not filtered_df.empty:
+    
+    # --- GRAFIK 1: Pengaruh Cuaca Terhadap Penyewaan ---
+    st.subheader("1️⃣ Average Rentals by Weather Condition")
+    weather_avg = filtered_df.groupby('weathersit')['cnt'].mean().reset_index()
+    fig_weather = px.bar(
+        weather_avg,
+        x='weathersit',
+        y='cnt',
+        labels={'weathersit': 'Weather Condition', 'cnt': 'Average Rentals'},
+        color='weathersit',
+        color_discrete_sequence=px.colors.qualitative.Set2
+    )
+    fig_weather.update_layout(showlegend=False)
+    st.plotly_chart(fig_weather, use_container_width=True)
 
-# =====================================================
-# Business Question 1
-# =====================================================
+    st.divider()
 
-st.subheader("1️⃣ Average Bike Rentals by Weather Condition")
+    # --- GRAFIK 2: Tren Penyewaan di Weekend vs Weekday ---
+    st.subheader("2️⃣ Average Rentals: Weekend/Holiday vs Weekday")
+    
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    weekday_avg = filtered_df.groupby(['weekday', 'workingday'])['cnt'].mean().reset_index()
+    weekday_avg['weekday'] = pd.Categorical(weekday_avg['weekday'], categories=day_order, ordered=True)
+    weekday_avg = weekday_avg.sort_values('weekday')
 
-weather_avg = (
-    filtered_day.groupby("weathersit")["cnt"]
-    .mean()
-    .reset_index()
-)
+    fig_weekday = px.bar(
+        weekday_avg,
+        x='weekday',
+        y='cnt',
+        color='workingday',
+        barmode='group',
+        labels={
+            'weekday': 'Day of Week', 
+            'cnt': 'Average Rentals', 
+            'workingday': 'Day Type'
+        },
+        color_discrete_map={
+            'Working Day': '#1f77b4', 
+            'Holiday/Weekend': '#ff7f0e'
+        }
+    )
+    st.plotly_chart(fig_weekday, use_container_width=True)
 
-fig, ax = plt.subplots(figsize=(8,5))
+    st.divider()
 
-sns.barplot(
-    data=weather_avg,
-    x="weathersit",
-    y="cnt",
-    palette="Blues_d",
-    ax=ax
-)
+    # --- GRAFIK 3: Scatter Plot Harian (Bersih & Tidak Menumpuk) ---
+    st.subheader("3️⃣ Temperature vs Bike Rentals Distribution (Daily Level)")
+    st.caption("Agregasi harian untuk melihat hubungan suhu dan jumlah penyewaan secara lebih jelas.")
+    
+    # Diagregasi ke tingkat harian agar titik tidak menumpuk
+    daily_scatter = filtered_df.groupby(['dteday', 'weathersit']).agg(
+        avg_temp=('temp', 'mean'),
+        total_cnt=('cnt', 'sum')
+    ).reset_index()
 
-ax.set_xlabel("Weather Condition")
-ax.set_ylabel("Average Rentals")
-ax.set_title("Average Bike Rentals by Weather")
+    fig_scatter = px.scatter(
+        daily_scatter,
+        x='avg_temp',
+        y='total_cnt',
+        color='weathersit',
+        labels={
+            'avg_temp': 'Average Temperature (Normalized)', 
+            'total_cnt': 'Total Daily Rentals',
+            'weathersit': 'Weather Condition'
+        },
+        opacity=0.75,
+        color_discrete_sequence=px.colors.qualitative.Set1
+    )
+    fig_scatter.update_traces(marker=dict(size=8))
+    st.plotly_chart(fig_scatter, use_container_width=True)
 
-st.pyplot(fig)
+else:
+    st.warning("Data tidak ditemukan untuk kombinasi filter ini.")
 
-st.info(
-"""
-**Insight**
-
-- Cuaca cerah menghasilkan rata-rata penyewaan tertinggi.
-- Semakin buruk kondisi cuaca, rata-rata penyewaan semakin menurun.
-"""
-)
-
-# =====================================================
-# Business Question 2
-# =====================================================
-
-st.subheader("2️⃣ Hourly Rental Pattern")
-
-hour_pattern = (
-    hour_df
-    .groupby(["workingday","hr"])["cnt"]
-    .mean()
-    .reset_index()
-)
-
-fig2, ax2 = plt.subplots(figsize=(10,5))
-
-sns.lineplot(
-    data=hour_pattern,
-    x="hr",
-    y="cnt",
-    hue="workingday",
-    linewidth=3,
-    ax=ax2
-)
-
-ax2.set_xlabel("Hour")
-ax2.set_ylabel("Average Rentals")
-ax2.set_title("Hourly Bike Rental Pattern")
-
-st.pyplot(fig2)
-
-st.info(
-"""
-**Insight**
-
-- Hari kerja menunjukkan dua jam sibuk pada pagi dan sore hari.
-- Hari libur memiliki pola yang lebih merata dengan puncak pada siang hari.
-"""
-)
-
-# =====================================================
-# Recommendation
-# =====================================================
-
-st.markdown("---")
-
-st.header("💡 Recommendation")
-
-st.success("""
-- Menambah jumlah sepeda pada jam sibuk (07.00–09.00 dan 16.00–18.00).
-- Mengoptimalkan redistribusi sepeda berdasarkan pola permintaan.
-- Memberikan promo pada kondisi cuaca buruk untuk meningkatkan penggunaan layanan.
-""")
-
-# =====================================================
-# Footer
-# =====================================================
-
-st.caption("Bike Sharing Dashboard | Data Analysis Project")
+# 8. Menampilkan Data Mentah
+with st.expander("📄 Lihat Data Mentah (Filtered Data)"):
+    st.dataframe(filtered_df)
