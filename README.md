@@ -163,15 +163,14 @@ Bike-Sharing-Dashboard/
 │
 ├── data/
 │   ├── day.csv
-│   └── hour.csv
+│   ├── hour.csv
+│   └── main_data.csv
 │
 ├── venv/
 │
 ├── .gitignore
 │
 ├── dashboard.py
-│
-├── main_data.csv
 │
 ├── requirements.txt
 │
@@ -262,7 +261,7 @@ seaborn==0.13.2
 
 ## ▶️ Menjalankan Dashboard
 
-Pastikan `main_data.csv` berada pada folder yang sama dengan `dashboard.py`.
+Pastikan `main_data.csv` berada pada folder data.
 
 ```text
 Bike-Sharing-Dashboard/
